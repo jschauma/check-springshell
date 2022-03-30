@@ -1,0 +1,175 @@
+.Dd March 30, 2022
+.Dt check-springshell 1
+.Os
+.Sh NAME
+.Nm check-springshell
+.Nd try to determine if a host is vulnerable to SpringShell CVE-2022-22963
+.Sh SYNOPSIS
+.Nm
+.Op Fl Vhv
+.Op Fl j Ar jar
+.Op Fl p Ar path
+.Op Fl s Ar skip
+.Sh DESCRIPTION
+The
+.Nm
+tool attempts to determine whether the host it is
+executed on is vulnerable to the SpringShell RCE
+vulnerability identified as CVE-2022-22963.
+.Pp
+Since this vulnerability is in a specific Java class
+that may be inside nested Java archive files,
+.Nm
+may be somewhat intrusive to run and should be
+executed with care and consideration of the system's
+load.
+Please see DETAILS for more information.
+.Sh OPTIONS
+The following options are supported by
+.Nm :
+.Bl -tag -width p_path_
+.It Fl V
+Print version number and exit.
+.It Fl h
+Print a short help message and exit.
+.It Fl j Ar jar
+Check only this archive, nothing else.
+Can be specified multiple times for multiple JAR
+(or other zip formatted archive) files.
+.It Fl p Ar path
+Limit filesystem traversal to this directory.
+Can be specified multiple times.
+If not specified,
+.Nm
+will default to '/'.
+.It Fl s Ar skip
+Skip the given checks.
+Valid arguments are 'files', 'packages', and
+\'processes'.
+.It Fl v
+Be verbose.
+Can be specified multiple times.
+.El
+.Sh DETAILS
+
+CVE-2022-22963 describes a possible remote code
+execution (RCE) vulnerability in the popular Spring
+Boot framework.
+Simply sending a POST request with a specific payload
+can cause the vulnerable server to execute commands on
+the attacker's behalf.
+.Pp
+To determine whether a host is vulnerable, the
+.Nm
+tool will perform the following checks:
+.Bl -bullet -compact
+.It
+check for the existence of likely vulnerable packages
+.It
+check for the existence of java processes using the
+\'CachedIntrospectionResuLts' class
+.El
+.Pp
+The discovery process may include running
+.Xr find 1 ,
+.Xr lsof 1 ,
+.Xr rpm 1 ,
+or
+.Xr yinst 1 ;
+please use the
+.Fl s
+flag to skip any checks that might have a negative
+impact on your host.
+.Pp
+The output of the command attempts to be human
+readable and provide sufficient information to judge
+whether the host requires attention.
+.Sh ENVIRONMENT
+The following environment variables influence the
+behavior of
+.Nm :
+.Bl -tag
+.It CHECK_SPRINGSHELL_FIND_OPTS_PRE
+Additional options to pass to
+.Xr find 1
+prior to the path name(s).
+.Pp
+By default,
+.Nm
+runs "find / -type f -name '*.[ejw]ar'";
+the contents of this variable are placed immediately
+after the 'find' and before the path name(s).
+.It CHECK_SPRINGSHELL_FIND_OPTS_POST
+Additional options to pass to
+.Xr find 1
+immediately after the path name(s).
+.El
+.Sh EXAMPLES
+Sample invocation on a non-vulnerable host:
+.Bd -literal -offset indent
+$ check-springshell
+No obvious indicators of vulnerability found.
+$
+.Ed
+.Pp
+Sample invocation only looking at processes
+.Bd -literal -offset indent
+$ check-springshell -s files -s packages -v -v
+=> Running all checks...
+==> Skipping package check.
+==> Looking for jars...
+==> Skipping files check.
+==> Checking all found jars...
+check-springshell 1.0 localhost: Possibly vulnerable jar 'BOOT-INF/lib/spring-beans-5.3.16.jar' (inside of /usr/local/myapp/myservice-0.0.1.jar) used by process 15569.
+
+$
+.Ed
+.Pp
+Sample invocation searching only /var and /usr/local/lib
+and skipping package and process checks:
+.Bd -literal -offset indent
+$ check-springshell -p /var -p /usr/local/lib -s packages -s processes
+Possibly vulnerable jar '/usr/local/lib/jars/spring-beans-5.3.16.jar'.
+Possibly vulnerable jar '/usr/local/lib/jars/spring-beans.jar'.
+$
+.Ed
+.Pp
+Note version comparisons are only done for packages,
+which is why the above output incudes files ending in
+a seemingly non-vulnerable version.
+.Pp
+To avoid mountpoint traversal on a Unix system where
+.Xr find 1
+requires the
+.Fl x
+flag to precede the paths:
+.Bd -literal -offset indent
+$ env CHECK_SPRINGSHELL_FIND_OPTS_PRE="-x" check-springshell
+No obvious indicators of vulnerability found.
+.Ed
+.Pp
+To only search files newer than '/tmp/foo':
+.Bd -literal -offset indent
+$ env CHECK_SPRINGSHELL_FIND_OPTS_POST="-newer /tmp/foo" check-springshell
+No obvious indicators of vulnerability found.
+.Ed
+.Sh EXIT STATUS
+.Nm
+will return 0 if the host was found not to be
+vulnerable and not in need of any update;
+it will return 1 if a vulnerable jar or package was
+detected.
+.Sh SEE ALSO
+.Xr find 1 ,
+.Xr lsof 1 ,
+.Xr rpm 1 ,
+.Xr yinst 1
+.Sh HISTORY
+.Nm
+was originally written by
+.An Jan Schaumann
+.Aq jschauma@netmeister.org
+in March 2022.
+.Sh BUGS
+Please file bugs and feature requests via GitHub pull
+requests and issues or by emailing the author.
