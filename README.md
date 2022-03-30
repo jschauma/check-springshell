@@ -8,7 +8,7 @@ aka
 "[SpringShell](https://tanzu.vmware.com/security/cve-2022-22963)".
 
 This works very similar to the
-[check-log4](https://git.vzbuilders.com/jans/check-log4j)
+[check-log4](https://github.com/yahoo/check-log4j)
 tool, whereby it traverses the filesystem looking for
 Java archives, cracks those open, and then looks for
 known vulnerable jars or classes.
