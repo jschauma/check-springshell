@@ -3,7 +3,7 @@
 .Os
 .Sh NAME
 .Nm check-springshell
-.Nd try to determine if a host is vulnerable to SpringShell CVE-2022-22963
+.Nd try to determine if a host is vulnerable to Spring CVE-2022-22963
 .Sh SYNOPSIS
 .Nm
 .Op Fl Vhv
@@ -14,8 +14,9 @@
 The
 .Nm
 tool attempts to determine whether the host it is
-executed on is vulnerable to the SpringShell RCE
-vulnerability identified as CVE-2022-22963.
+executed on is vulnerable to the Spring SpEL /
+Expression Resource Access Vulnerability vulnerability
+identified as CVE-2022-22963.
 .Pp
 Since this vulnerability is in a specific Java class
 that may be inside nested Java archive files,
@@ -51,7 +52,6 @@ Be verbose.
 Can be specified multiple times.
 .El
 .Sh DETAILS
-
 CVE-2022-22963 describes a possible remote code
 execution (RCE) vulnerability in the popular Spring
 Boot framework.

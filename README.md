@@ -3,9 +3,16 @@ check-springshell
 
 This tool will try to determine if the host it is
 running on is likely vulnerable to
-[CVE-2022-22963](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-22963),
-aka
-"[SpringShell](https://tanzu.vmware.com/security/cve-2022-22963)".
+[CVE-2022-22963](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-22963).
+
+That vulnerability is often roped in with an as of yet
+unconfirmed RCE branded as "SpringShell" (see [this
+post](https://www.lunasec.io/docs/blog/spring-rce-vulnerabilities/) for more details).
+
+CVE-2022-22963, a [SpEL / Spring Expression Resource
+Access
+Vulnerability](https://tanzu.vmware.com/security/cve-2022-22963)
+is separate from that, but at least confirmed.
 
 This works very similar to the
 [check-log4](https://github.com/yahoo/check-log4j)
@@ -33,7 +40,7 @@ Documentation
 
 ```
 NAME
-     check-springshell - try to determine if a host is vulnerable to SpringShell
+     check-springshell - try to determine if a host is vulnerable to Spring
      CVE-2022-22963
 
 SYNOPSIS
@@ -41,8 +48,8 @@ SYNOPSIS
 
 DESCRIPTION
      The check-springshell tool attempts to determine whether the host it is
-     executed on is vulnerable to the SpringShell RCE vulnerability identified
-     as CVE-2022-22963.
+     executed on is vulnerable to the Spring SpEL / Expression Resource Access
+     Vulnerability vulnerability identified as CVE-2022-22963.
 
      Since this vulnerability is in a specific Java class that may be inside
      nested Java archive files, check-springshell may be somewhat intrusive to
