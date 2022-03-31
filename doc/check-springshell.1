@@ -1,9 +1,9 @@
-.Dd March 30, 2022
+.Dd March 31, 2022
 .Dt check-springshell 1
 .Os
 .Sh NAME
 .Nm check-springshell
-.Nd try to determine if a host is vulnerable to Spring CVE-2022-22963
+.Nd try to determine if a host is vulnerable to the SpringShell vulnerabilities
 .Sh SYNOPSIS
 .Nm
 .Op Fl Vhv
@@ -14,13 +14,16 @@
 The
 .Nm
 tool attempts to determine whether the host it is
-executed on is vulnerable to the Spring SpEL /
-Expression Resource Access Vulnerability vulnerability
-identified as CVE-2022-22963.
+executed on is vulnerable to the vulnerabilities
+grouped together under the "SpringShell" name.
 .Pp
-Since this vulnerability is in a specific Java class
-that may be inside nested Java archive files,
+This includes CVE-2022-22963, a Spring SpEL /
+Expression Resource Access Vulnerability, as well as
+CVE-2022-22965, the spring-webmvc/spring-webflux RCE
+termed "SpringShell".
+.Pp
 .Nm
+will look for nested Java archive files and so
 may be somewhat intrusive to run and should be
 executed with care and consideration of the system's
 load.
@@ -59,16 +62,15 @@ Simply sending a POST request with a specific payload
 can cause the vulnerable server to execute commands on
 the attacker's behalf.
 .Pp
+Likewise, CVE-2022-22965 describes another possible
+RCE vulnerability, termed "SpringShell", which follows
+a common webshell upload pattern.
+.Pp
 To determine whether a host is vulnerable, the
 .Nm
-tool will perform the following checks:
-.Bl -bullet -compact
-.It
-check for the existence of likely vulnerable packages
-.It
-check for the existence of java processes using the
-\'CachedIntrospectionResuLts' class
-.El
+tool will look for classes and java archives relating
+to the known vulnerable versions of the Spring
+framework.
 .Pp
 The discovery process may include running
 .Xr find 1 ,
@@ -129,8 +131,9 @@ Sample invocation searching only /var and /usr/local/lib
 and skipping package and process checks:
 .Bd -literal -offset indent
 $ check-springshell -p /var -p /usr/local/lib -s packages -s processes
-Possibly vulnerable jar '/usr/local/lib/jars/spring-beans-5.3.16.jar'.
-Possibly vulnerable jar '/usr/local/lib/jars/spring-beans.jar'.
+The following archives of likely vulnerable versions were found:
+/var/./spring-beans-3.0.5.jar
+/usr/local/lib/./log4shell-vulnerable-app-0.0.1-SNAPSHOT.jar:BOOT-INF/lib/spring-webmvc-5.3.13.jar
 $
 .Ed
 .Pp

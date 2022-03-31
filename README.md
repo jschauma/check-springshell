@@ -3,16 +3,14 @@ check-springshell
 
 This tool will try to determine if the host it is
 running on is likely vulnerable to
-[CVE-2022-22963](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-22963).
-
-That vulnerability is often roped in with an as of yet
-unconfirmed RCE branded as "SpringShell" (see [this
-post](https://www.lunasec.io/docs/blog/spring-rce-vulnerabilities/) for more details).
-
-CVE-2022-22963, a [SpEL / Spring Expression Resource
-Access
-Vulnerability](https://tanzu.vmware.com/security/cve-2022-22963)
-is separate from that, but at least confirmed.
+[CVE-2022-22963](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-22963),
+a [SpEL / Spring Expression Resource Access
+Vulnerability](https://tanzu.vmware.com/security/cve-2022-22963),
+as well as
+[CVE-2022-22965](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-22965),
+the so-called
+"[SpringShell](https://spring.io/blog/2022/03/31/spring-framework-rce-early-announcement)"
+RCE vulnerability.
 
 This works very similar to the
 [check-log4](https://github.com/yahoo/check-log4j)
@@ -40,21 +38,25 @@ Documentation
 
 ```
 NAME
-     check-springshell - try to determine if a host is vulnerable to Spring
-     CVE-2022-22963
+     check-springshell - try to determine if a host is vulnerable to the
+     SpringShell vulnerabilities
 
 SYNOPSIS
      check-springshell [-Vhv] [-j jar] [-p path] [-s skip]
 
 DESCRIPTION
      The check-springshell tool attempts to determine whether the host it is
-     executed on is vulnerable to the Spring SpEL / Expression Resource Access
-     Vulnerability vulnerability identified as CVE-2022-22963.
+     executed on is vulnerable to the vulnerabilities grouped together under the
+     "SpringShell" name.
 
-     Since this vulnerability is in a specific Java class that may be inside
-     nested Java archive files, check-springshell may be somewhat intrusive to
-     run and should be executed with care and consideration of the system's
-     load.  Please see DETAILS for more information.
+     This includes CVE-2022-22963, a Spring SpEL / Expression Resource Access
+     Vulnerability, as well as CVE-2022-22965, the spring-webmvc/spring-webflux
+     RCE termed "SpringShell".
+
+     check-springshell will look for nested Java archive files and so may be
+     somewhat intrusive to run and should be executed with care and
+     consideration of the system's load.  Please see DETAILS for more
+     information.
 
 OPTIONS
      The following options are supported by check-springshell:
@@ -81,11 +83,12 @@ DETAILS
      request with a specific payload can cause the vulnerable server to execute
      commands on the attacker's behalf.
 
+     Likewise, CVE-2022-22965 describes another possible RCE vulnerability,
+     termed "SpringShell", which follows a common webshell upload pattern.
+
      To determine whether a host is vulnerable, the check-springshell tool will
-     perform the following checks:
-     o	 check for the existence of likely vulnerable packages
-     o	 check for the existence of java processes using the
-	 'CachedIntrospectionResuLts' class
+     look for classes and java archives relating to the known vulnerable
+     versions of the Spring framework.
 
      The discovery process may include running find(1), lsof(1), rpm(1), or
      yinst(1); please use the -s flag to skip any checks that might have a
@@ -132,8 +135,9 @@ EXAMPLES
      package and process checks:
 
 	   $ check-springshell -p /var -p /usr/local/lib -s packages -s processes
-	   Possibly vulnerable jar '/usr/local/lib/jars/spring-beans-5.3.16.jar'.
-	   Possibly vulnerable jar '/usr/local/lib/jars/spring-beans.jar'.
+	   The following archives of likely vulnerable versions were found:
+	   /var/./spring-beans-3.0.5.jar
+	   /usr/local/lib/./log4shell-vulnerable-app-0.0.1-SNAPSHOT.jar:BOOT-INF/lib/spring-webmvc-5.3.13.jar
 	   $
 
      Note version comparisons are only done for packages, which is why the above

@@ -4,12 +4,9 @@
 # <jschauma@netmeister.org> in March 2022.
 #
 # This script attempts to determine whether the host
-# it runs on is likely to be vulnerable to SpringShell RCE
-# CVE-2022-22963.
-#
-# Derived from https://github.com/yahoo/check-log4j by
-# the same author. (This should be abstracted into a
-# more generic 'check for horrible jars' tool.)
+# it runs on is likely to be vulnerable to Spring
+# Framework CVEs CVE-2022-22963 and CVE-2022-22965
+# (aka "SpringShell").
 #
 # Copyright 2022 Yahoo Inc.
 #
@@ -39,18 +36,38 @@ umask 077
 
 PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin:/home/y/bin:/home/y/sbin
 
-CVE="CVE-2022-22963"
+CVES="CVE-2022-22963 and CVE-2022-22965"
 
-# Per https://tanzu.vmware.com/security/cve-2022-22963:
-MAJOR_WANTED="3"
-MINOR_WANTED="1"
-TINY_WANTED="7"
+# Per
+# https://tanzu.vmware.com/security/cve-2022-22963, we
+# are looking for Cloud Function spring-beans versions
+# >= 3.1.6 or >= 3.2.2
+SB_MAJOR_WANTED="3"
+SB_MINOR_WANTED="1"
+SB_TINY_WANTED="7"
 
-MAJOR_ALT_WANTED="3"
-MINOR_ALT_WANTED="2"
-TINY_ALT_WANTED="2"
+SB_MAJOR_ALT_WANTED="3"
+SB_MINOR_ALT_WANTED="2"
+SB_TINY_ALT_WANTED="2"
 
-FATAL_CLASS="CachedIntrospectionResults.class"
+SB_NAME="spring-beans"
+
+# Per
+# https://spring.io/blog/2022/03/31/spring-framework-rce-early-announcement,
+# https://tanzu.vmware.com/security/cve-2022-22965
+# we are looking for Spring Framework webmvc or
+# webflux >= 5.3.18 or 5.2.20.
+WEB_MAJOR_WANTED="5"
+WEB_MINOR_WANTED="3"
+WEB_TINY_WANTED="18"
+
+WEB_MAJOR_ALT_WANTED="5"
+WEB_MINOR_ALT_WANTED="2"
+WEB_TINY_ALT_WANTED="20"
+
+PACKAGE_NAMES="${SB_NAME} spring-webmvc spring-webflux"
+
+FATAL_CLASSES="CachedIntrospectionResults.class EnableWebFlux.class EnableWebMvc.class"
 
 _TMPDIR=""
 CHECK_JARS=""
@@ -104,48 +121,15 @@ checkFilesystem() {
 	newjars=$(eval ${findCmd} -type f -iname \'*.[ejw]ar\' 2>/dev/null || true)
 	FOUND_JARS="$(printf "${FOUND_JARS:+${FOUND_JARS}\n}${newjars}")"
 
-	verbose "Searching for ${FATAL_CLASS} on the filesystem..." 3
-	classes=$(eval ${findCmd} -type f -iname "${FATAL_CLASS}" 2>/dev/null || true)
+	verbose "Searching for ${FATAL_CLASSES} on the filesystem..." 3
+	for class in ${FATAL_CLASSES}; do
+		classes=$(eval ${findCmd} -type f -iname "${class}" 2>/dev/null || true)
 
 	for class in ${classes}; do
-		okVersion="$(checkFixedVersion "${class}")"
-		if [ -z "${okVersion}" ]; then
 			log "Possibly vulnerable class ${class}."
 			SUSPECT_CLASSES="$(printf "${SUSPECT_CLASSES:+${SUSPECT_CLASSES}\n}${class}")"
-		fi
 	done
-}
-
-checkFixedVersion() {
-	local file="${1}"
-	local ver=""
-	local mgrClass=""
-	local suffix="${file##*.}"
-	local dir=""
-
-	set +e
-	if [ x"${suffix##*[ejw]}" = x"ar" ]; then
-		if [ -z "${UNZIP}" ]; then
-			warn "Unable to check if ${suffix} contains a fixed version since unzip(1) is missing."
-			return
-		fi
-		verbose "Checking for fixed classes in '${file}'..." 6
-		if zeroSize "${file}"; then
-			verbose "Skipping zero-size file '${file}'..." 6
-			return
-		fi
-
-		mgrClass="$(${UNZIP} -q -l "${file}" 2>/dev/null | awk 'tolower($0) ~ /cachedintrospectionresults.class$/ { print $NF; }')"
-		if [ -n "${mgrClass}" ]; then
-			cdtmp
-			${UNZIP} -o -q "${file}" "${mgrClass}" 2>/dev/null
-		fi
-	elif [ x"${suffix}" = x"class" ]; then
-		# If we find the fatal class outside of a jar, let's guess that
-		# there might be an accompanying CachedIntrospectionResuLts.class nearby...
-		mgrClass="${file%/*}/../net/CachedIntrospectionResuLts.class"
-	fi
-	set -e
+	done
 }
 
 checkInJar() {
@@ -155,7 +139,6 @@ checkInJar() {
 	local parent="${4:-""}"
 	local msg=""
 	local match=""
-	local flags=""
 	local okVersion=""
 	local rval=0
 
@@ -179,32 +162,31 @@ checkInJar() {
 
 	set +e
 	if [ -n "${UNZIP}" ]; then
-		${UNZIP} -q -l "${jar}" 2>/dev/null | grep -q "${needle}"
+		${UNZIP} -q -l "${jar}" 2>/dev/null | egrep -q "${needle}"
 	else
 		warn "unzip(1) not found, trying to grep..."
-		grep -q "${needle}" "${jar}"
+		egrep -q "${needle}" "${jar}"
 	fi
 	rval=$?
 	set -e
 
 	if [ ${rval} -eq 0 ]; then
+		if checkManifest "${jar}"; then
+			return
+		fi
+
 		if [ -n "${parent}" ]; then
 			msg=" (inside of ${parent})"
 		fi
 		if [ x"${jar}" != x"${pid}" ] && expr "${pid}" : "[0-9]*$" >/dev/null; then
 			msg="${msg} used by process ${pid}"
 		fi
-
-		okVersion="$(checkFixedVersion "${jar}")"
-		if [ -z "${flags}" ]; then
-			log "Possibly vulnerable archive '${jar}'${msg}."
-		fi
 		SUSPECT_JARS="${SUSPECT_JARS} ${thisJar}"
 	fi
 }
 
 checkJars() {
-	local found jar jarjar msg pid
+	local classnames found jar jarjar msg names pid
 
 	if [ -z "${CHECK_JARS}" ]; then
 		findJars
@@ -219,6 +201,10 @@ checkJars() {
 	if [ -z "${UNZIP}" ]; then
 		warn "unzip(1) not found, unable to peek into jars inside of jar!"
 	fi
+
+	names="($(echo "${PACKAGE_NAMES}" | sed -e 's/ /|/g'))"
+	classnames="$(echo ${FATAL_CLASSES} | sed -e 's/ /|/g')"
+
 	for found in ${FOUND_JARS}; do
 		pid="${found%%--*}"
 		jar="${found#*--}"
@@ -228,14 +214,35 @@ checkJars() {
 				verbose "Skipping zero-size file '${jar}'..." 3
 				continue
 			fi
-			jarjar="$(${UNZIP} -q -l "${jar}" 2>/dev/null | awk 'tolower($0) ~ /^ .*spring-beans.*[ejw]ar$/ { print $NF; }')"
-			if [ -n "${jarjar}" ]; then
-				extractAndInspect "${jar}" "${jarjar}" ${pid}
-			fi
+			jarjar="$(${UNZIP} -q -l "${jar}" 2>/dev/null | egrep -i "^ .*${names}-.*.[ejw]ar$" | awk '{ print $NF; }')"
+			for j in ${jarjar}; do
+				extractAndInspect "${jar}" "${j}" ${pid}
+			done
 		fi
 
-		checkInJar "${jar}" "${FATAL_CLASS}" "${pid}"
+		checkInJar "${jar}" "(${classnames})" "${pid}"
 	done
+}
+
+checkManifest() {
+	local jar="${1}"
+	local manifest name version
+
+	manifest="META-INF/MANIFEST.MF"
+
+	verbose "Extracting ${jar} to check ${manifest}..." 5
+
+	cdtmp
+	if ${UNZIP} -o -q "${jar}" ${manifest} 2>/dev/null; then
+		name="$(awk '/^Implementation-Title:/ { print $NF }' ${manifest} | tr -d [:space:])"
+		version="$(awk '/^Implementation-Version:/ { print $NF }' ${manifest} | tr -d [:space:])"
+		if echo "${PACKAGE_NAMES}" | grep -w -q "${name}" ; then
+			if isFixedVersion "${name}" "${version}"; then
+				return 0
+			fi
+		fi
+	fi
+	return 1
 }
 
 checkOnlyGivenJars() {
@@ -247,11 +254,14 @@ checkOnlyGivenJars() {
 checkRpms() {
 	verbose "Checking rpms..." 4
 
-	local pkg version
+	local name names pkg version
 
-	for pkg in $(rpm -qa --queryformat '%{NAME}--%{VERSION}\n' | grep spring-beans); do
+	names="($(echo "${PACKAGE_NAMES}" | sed -e 's/ /|/g'))"
+
+	for pkg in $(rpm -qa --queryformat '%{NAME}--%{VERSION}\n' | egrep "${names}"); do
+		name="${pkg%%--*}"
 		version="${pkg##*--}"
-		if ! isFixedVersion "${version}"; then
+		if ! isFixedVersion "${name}" "${version}"; then
 			# Squeeze '--' so users don't get confused.
 			pkg="$(echo "${pkg}" | tr -s -)"
 			SUSPECT_PACKAGES="${SUSPECT_PACKAGES} ${pkg}"
@@ -299,14 +309,15 @@ extractAndInspect() {
 	local jar="${1}"
 	local jarjar="${2}"
 	local pid="${3}"
-	local f
+	local classnames f
 
 	verbose "Extracting ${jar} to look inside jars inside of jars..." 5
+	classnames="$(echo ${FATAL_CLASSES} | sed -e 's/ /|/g')"
 
 	cdtmp
 	if ${UNZIP} -o -q "${jar}" ${jarjar} 2>/dev/null; then
 		for f in ${jarjar}; do
-			checkInJar "${f}" "${FATAL_CLASS}" ${pid} "${jar}"
+			checkInJar "${f}" "(${classnames})" ${pid} "${jar}"
 		done
 	fi
 }
@@ -317,9 +328,13 @@ findJars() {
 	checkFilesystem
 }
 
-isFixedVersion () {
-	local version="${1}"
-	local major minor
+isFixedVersion() {
+	local pkg="${1}"
+	local version="${2}"
+	local major minor tiny
+
+	local wanted_major wanted_minor wanted_tiny
+	local alt_wanted_major alt_wanted_minor alt_wanted_tiny
 
 	major="${version%%.*}"  # 2.15.0 => 2
 	minor="${version#*.}"   # 2.15.0 => 15.0
@@ -338,10 +353,30 @@ isFixedVersion () {
 		return 1
 	fi
 
-	if [ ${major} -lt ${MAJOR_WANTED} ] ||
-		[ ${major} -eq ${MAJOR_WANTED} -a ${minor} -lt ${MINOR_WANTED} ] ||
-		[ ${major} -eq ${MAJOR_WANTED} -a ${minor} -eq ${MINOR_WANTED} -a ${tiny} -lt ${TINY_WANTED} ] ||
-		[ ${major} -eq ${MAJOR_ALT_WANTED} -a ${minor} -eq ${MINOR_ALT_WANTED} -a ${tiny} -lt ${TINY_ALT_WANTED} ]; then
+	wanted_major="${SB_MAJOR_WANTED}"
+	wanted_minor="${SB_MINOR_WANTED}"
+	wanted_tiny="${SB_TINY_WANTED}"
+	alt_wanted_major="${SB_MAJOR_ALT_WANTED}"
+	alt_wanted_minor="${SB_MINOR_ALT_WANTED}"
+	alt_wanted_tiny="${SB_TINY_ALT_WANTED}"
+	if [ x"${pkg}" != x"${SB_NAME}" ]; then
+		wanted_major="${WEB_MAJOR_WANTED}"
+		wanted_minor="${WEB_MINOR_WANTED}"
+		wanted_tiny="${WEB_TINY_WANTED}"
+		alt_wanted_major="${WEB_MAJOR_ALT_WANTED}"
+		alt_wanted_minor="${WEB_MINOR_ALT_WANTED}"
+		alt_wanted_tiny="${WEB_TINY_ALT_WANTED}"
+	fi
+
+	if [ ${major} -lt ${wanted_major} ] ||
+		[ ${major} -eq ${wanted_major} -a ${minor} -lt ${wanted_minor} ] ||
+		[ ${major} -eq ${wanted_major} -a ${minor} -eq ${wanted_minor} -a ${tiny} -lt ${wanted_tiny} ]; then
+
+		if [ ${major} -lt ${alt_wanted_major} ] ||
+			[ ${major} -eq ${alt_wanted_major} -a ${minor} -lt ${alt_wanted_minor} ] ||
+			[ ${major} -eq ${alt_wanted_major} -a ${minor} -eq ${alt_wanted_minor} -a ${tiny} -lt ${alt_wanted_tiny} ]; then
+			return 0
+		fi
 		return 1
 	fi
 
@@ -387,13 +422,13 @@ verbose() {
 
 verdict() {
 	if [ -z "${SUSPECT_JARS}" -a -z "${SUSPECT_PACKAGES}" -a -z "${SUSPECT_CLASSES}" ]; then
-		log "No obvious indicators of vulnerability to ${CVE} found."
+		log "No obvious indicators of vulnerability to ${CVES} found."
 		RETVAL=0
 	fi
 
 	if [ -n "${SUSPECT_JARS}" ]; then
 		echo
-		echo "The following archives were found to include '${FATAL_CLASS}':"
+		echo "The following archives of likely vulnerable versions were found:"
 		echo "${SUSPECT_JARS# *}" | tr ' ' '\n'
 	fi
 
