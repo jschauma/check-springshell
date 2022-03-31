@@ -83,9 +83,7 @@ SUSPECT_JARS=""
 SUSPECT_PACKAGES=""
 UNZIP="$(command -v unzip 2>/dev/null || true)"
 VERBOSITY=0
-VERSION="0.1"
-YINST_PREFIX="/home/y"
-YINST_SET_PACKAGES=""
+VERSION="0.2"
 
 LOGPREFIX="${PROGNAME} ${VERSION} ${HOSTNAME:-"localhost"}"
 

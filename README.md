@@ -90,9 +90,9 @@ DETAILS
      look for classes and java archives relating to the known vulnerable
      versions of the Spring framework.
 
-     The discovery process may include running find(1), lsof(1), rpm(1), or
-     yinst(1); please use the -s flag to skip any checks that might have a
-     negative impact on your host.
+     The discovery process may include running find(1), lsof(1), or rpm(1);
+     please use the -s flag to skip any checks that might have a negative impact
+     on your host.
 
      The output of the command attempts to be human readable and provide
      sufficient information to judge whether the host requires attention.
