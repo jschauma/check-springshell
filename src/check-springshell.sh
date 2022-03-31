@@ -73,6 +73,8 @@ _TMPDIR=""
 CHECK_JARS=""
 ENV_VAR_SET="no"
 FOUND_JARS=""
+JAVA="$(command -v java 2>/dev/null || true)"
+JAVA_WANTED="9"
 PROGNAME="${0##*/}"
 RETVAL=1
 SEARCH_PATHS=""
@@ -83,7 +85,7 @@ SUSPECT_JARS=""
 SUSPECT_PACKAGES=""
 UNZIP="$(command -v unzip 2>/dev/null || true)"
 VERBOSITY=0
-VERSION="0.2"
+VERSION="0.3"
 
 LOGPREFIX="${PROGNAME} ${VERSION} ${HOSTNAME:-"localhost"}"
 
@@ -220,6 +222,39 @@ checkJars() {
 
 		checkInJar "${jar}" "(${classnames})" "${pid}"
 	done
+}
+
+checkJava() {
+	if expr "${SKIP}" : ".*java" >/dev/null; then
+		verbose "Skipping java check." 2
+		return
+	fi
+
+	local major version
+
+	verbose "Checking for vulnerable java version..." 2
+
+	if [ -z "${JAVA}" ]; then
+		warn "java(1) not found, unable to check for vulnerable version!"
+		return
+	fi
+
+	version="$(${JAVA} -version 2>&1 | sed -n -e 's/.*version "\(.*\)".*/\1/p')"
+
+	# We only care about the major version:
+	major="${version%%.*}"
+
+	if ! expr "${major}" : "[0-9]*$" >/dev/null; then
+		warn "Non-numeric Java version number '${version}'?"
+		return
+	fi
+
+	if [ ${major} -lt ${JAVA_WANTED} ]; then
+		echo "Java version ${version} detected and believed to be non-vulnerable."
+		echo "Skipping all other checks. Specify '-s java' to run other checks anyway."
+		exit 0
+		# NOTREACHED
+	fi
 }
 
 checkManifest() {
@@ -389,6 +424,7 @@ log() {
 springshellCheck() {
 	verbose "Running all checks..." 1
 
+	checkJava
 	checkPackages
 	checkJars
 }

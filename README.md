@@ -72,8 +72,8 @@ OPTIONS
 	      multiple times.  If not specified, check-springshell will default
 	      to '/'.
 
-     -s skip  Skip the given checks.  Valid arguments are 'files', 'packages',
-	      and 'processes'.
+     -s skip  Skip the given checks.  Valid arguments are 'files', 'java',
+	      'packages', and 'processes'.
 
      -v	      Be verbose.  Can be specified multiple times.
 
