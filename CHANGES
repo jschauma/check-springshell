@@ -1,3 +1,6 @@
+Version 0.4 (2022-04-01)
+ * better detection of CVE-2022-22963
+
 Version 0.3 (2022-03-31)
  * add java version check (skip with '-s java')
 

@@ -36,21 +36,22 @@ umask 077
 
 PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin:/home/y/bin:/home/y/sbin
 
-CVES="CVE-2022-22963 and CVE-2022-22965"
-
 # Per
 # https://tanzu.vmware.com/security/cve-2022-22963, we
-# are looking for Cloud Function spring-beans versions
-# >= 3.1.6 or >= 3.2.2
-SB_MAJOR_WANTED="3"
-SB_MINOR_WANTED="1"
-SB_TINY_WANTED="7"
+# are looking for Cloud Function
+# spring-cloud-function-* versions >= 3.1.6 or >= 3.2.2
+SCF_MAJOR_WANTED="3"
+SCF_MINOR_WANTED="1"
+SCF_TINY_WANTED="7"
 
-SB_MAJOR_ALT_WANTED="3"
-SB_MINOR_ALT_WANTED="2"
-SB_TINY_ALT_WANTED="2"
+SCF_MAJOR_ALT_WANTED="3"
+SCF_MINOR_ALT_WANTED="2"
+SCF_TINY_ALT_WANTED="2"
 
-SB_NAME="spring-beans"
+SCF_CVE="CVE-2022-22963"
+SCF_NAME="spring-cloud-function"
+SCF_SUSPECT_JARS=""
+SCF_SUSPECT_PACKAGES=""
 
 # Per
 # https://spring.io/blog/2022/03/31/spring-framework-rce-early-announcement,
@@ -65,9 +66,13 @@ WEB_MAJOR_ALT_WANTED="5"
 WEB_MINOR_ALT_WANTED="2"
 WEB_TINY_ALT_WANTED="20"
 
-PACKAGE_NAMES="${SB_NAME} spring-webmvc spring-webflux"
+WEB_CVE="CVE-2022-22965"
+WEB_SUSPECT_JARS=""
+WEB_SUSPECT_PACKAGES=""
 
-FATAL_CLASSES="CachedIntrospectionResults.class EnableWebFlux.class EnableWebMvc.class"
+PACKAGE_NAMES="${SCF_NAME} spring-webmvc spring-webflux"
+
+FATAL_CLASSES="CachedIntrospectionResults.class RoutingFunction.class EnableWebFlux.class EnableWebMvc.class"
 
 _TMPDIR=""
 CHECK_JARS=""
@@ -81,11 +86,9 @@ SEARCH_PATHS=""
 SKIP=""
 SEEN_JARS=""
 SUSPECT_CLASSES=""
-SUSPECT_JARS=""
-SUSPECT_PACKAGES=""
 UNZIP="$(command -v unzip 2>/dev/null || true)"
 VERBOSITY=0
-VERSION="0.3"
+VERSION="0.4"
 
 LOGPREFIX="${PROGNAME} ${VERSION} ${HOSTNAME:-"localhost"}"
 
@@ -134,9 +137,10 @@ checkFilesystem() {
 
 checkInJar() {
 	local jar="${1}"
-	local needle="${2}"
-	local pid="${3}"
-	local parent="${4:-""}"
+	local cve="${2}"
+	local needle="${3}"
+	local pid="${4}"
+	local parent="${5:-""}"
 	local msg=""
 	local match=""
 	local okVersion=""
@@ -181,12 +185,17 @@ checkInJar() {
 		if [ x"${jar}" != x"${pid}" ] && expr "${pid}" : "[0-9]*$" >/dev/null; then
 			msg="${msg} used by process ${pid}"
 		fi
-		SUSPECT_JARS="${SUSPECT_JARS} ${thisJar}"
+
+		if [ x"${cve}" = x"${SCF_CVE}" ]; then
+			SCF_SUSPECT_JARS="${SCF_SUSPECT_JARS} ${thisJar}"
+		else
+			WEB_SUSPECT_JARS="${WEB_SUSPECT_JARS} ${thisJar}"
+		fi
 	fi
 }
 
 checkJars() {
-	local classnames found jar jarjar msg names pid
+	local classnames cve found jar jarname jarjar msg names pid
 
 	if [ -z "${CHECK_JARS}" ]; then
 		findJars
@@ -208,6 +217,12 @@ checkJars() {
 	for found in ${FOUND_JARS}; do
 		pid="${found%%--*}"
 		jar="${found#*--}"
+		jarname="${jar##*/}"
+
+		cve="${SCF_CVE}"
+		if ! expr "${jarname}" : "${SCF_NAME}" >/dev/null ; then
+			cve="${WEB_CVE}"
+		fi
 
 		if [ -n "${UNZIP}" ]; then
 			if zeroSize "${jar}"; then
@@ -216,11 +231,11 @@ checkJars() {
 			fi
 			jarjar="$(${UNZIP} -q -l "${jar}" 2>/dev/null | egrep -i "^ .*${names}-.*.[ejw]ar$" | awk '{ print $NF; }')"
 			for j in ${jarjar}; do
-				extractAndInspect "${jar}" "${j}" ${pid}
+				extractAndInspect "${jar}" "${cve}" "${j}" ${pid}
 			done
 		fi
 
-		checkInJar "${jar}" "(${classnames})" "${pid}"
+		checkInJar "${jar}" "${cve}" "(${classnames})" "${pid}"
 	done
 }
 
@@ -297,7 +312,11 @@ checkRpms() {
 		if ! isFixedVersion "${name}" "${version}"; then
 			# Squeeze '--' so users don't get confused.
 			pkg="$(echo "${pkg}" | tr -s -)"
-			SUSPECT_PACKAGES="${SUSPECT_PACKAGES} ${pkg}"
+			if expr "${name}" : "${SCF_NAME}" >/dev/null ; then
+				SCF_SUSPECT_PACKAGES="${SCF_SUSPECT_PACKAGES} ${pkg}"
+			else
+				WEB_SUSPECT_PACKAGES="${WEB_SUSPECT_PACKAGES} ${pkg}"
+			fi
 		fi
 	done
 }
@@ -340,8 +359,9 @@ cleanup() {
 
 extractAndInspect() {
 	local jar="${1}"
-	local jarjar="${2}"
-	local pid="${3}"
+	local cve="${2}"
+	local jarjar="${3}"
+	local pid="${4}"
 	local classnames f
 
 	verbose "Extracting ${jar} to look inside jars inside of jars..." 5
@@ -350,7 +370,7 @@ extractAndInspect() {
 	cdtmp
 	if ${UNZIP} -o -q "${jar}" ${jarjar} 2>/dev/null; then
 		for f in ${jarjar}; do
-			checkInJar "${f}" "(${classnames})" ${pid} "${jar}"
+			checkInJar "${f}" "${cve}" "(${classnames})" ${pid} "${jar}"
 		done
 	fi
 }
@@ -386,13 +406,13 @@ isFixedVersion() {
 		return 1
 	fi
 
-	wanted_major="${SB_MAJOR_WANTED}"
-	wanted_minor="${SB_MINOR_WANTED}"
-	wanted_tiny="${SB_TINY_WANTED}"
-	alt_wanted_major="${SB_MAJOR_ALT_WANTED}"
-	alt_wanted_minor="${SB_MINOR_ALT_WANTED}"
-	alt_wanted_tiny="${SB_TINY_ALT_WANTED}"
-	if [ x"${pkg}" != x"${SB_NAME}" ]; then
+	wanted_major="${SCF_MAJOR_WANTED}"
+	wanted_minor="${SCF_MINOR_WANTED}"
+	wanted_tiny="${SCF_TINY_WANTED}"
+	alt_wanted_major="${SCF_MAJOR_ALT_WANTED}"
+	alt_wanted_minor="${SCF_MINOR_ALT_WANTED}"
+	alt_wanted_tiny="${SCF_TINY_ALT_WANTED}"
+	if ! expr "${pkg}" : "${SCF_NAME}" >/dev/null ; then
 		wanted_major="${WEB_MAJOR_WANTED}"
 		wanted_minor="${WEB_MINOR_WANTED}"
 		wanted_tiny="${WEB_TINY_WANTED}"
@@ -455,21 +475,36 @@ verbose() {
 }
 
 verdict() {
-	if [ -z "${SUSPECT_JARS}" -a -z "${SUSPECT_PACKAGES}" -a -z "${SUSPECT_CLASSES}" ]; then
-		log "No obvious indicators of vulnerability to ${CVES} found."
+	if [ -z "${SCF_SUSPECT_JARS}" -a -z "${WEB_SUSPECT_JARS}" -a \
+		-z "${SCF_SUSPECT_PACKAGES}" -a -z "${WEB_SUSPECT_PACKAGES}" -a \
+		-z "${SUSPECT_CLASSES}" ]; then
+		log "No obvious indicators of vulnerability to ${SCF_CVE} or ${WEB_CVE} found."
 		RETVAL=0
 	fi
 
-	if [ -n "${SUSPECT_JARS}" ]; then
+	if [ -n "${SCF_SUSPECT_JARS}" ]; then
 		echo
-		echo "The following archives of likely vulnerable versions were found:"
-		echo "${SUSPECT_JARS# *}" | tr ' ' '\n'
+		echo "The following archives appear to be vulnerable to ${SCF_CVE}:"
+		echo "${SCF_SUSPECT_JARS# *}" | tr ' ' '\n'
+		RETVAL=1
+	fi
+	if [ -n "${WEB_SUSPECT_JARS}" ]; then
+		echo
+		echo "The following archives appear to be vulnerable to ${WEB_CVE}:"
+		echo "${WEB_SUSPECT_JARS# *}" | tr ' ' '\n'
+		RETVAL=1
 	fi
 
-	if [ -n "${SUSPECT_PACKAGES}" ]; then
+	if [ -n "${SCF_SUSPECT_PACKAGES}" ]; then
 		echo
-		echo "The following packages might still be vulnerable:"
-		echo "${SUSPECT_PACKAGES}"
+		echo "The following packages appear to be vulnerable to ${SCF_CVE}:"
+		echo "${SCF_SUSPECT_PACKAGES}"
+		RETVAL=1
+	fi
+	if [ -n "${WEB_SUSPECT_PACKAGES}" ]; then
+		echo
+		echo "The following packages appear to be vulnerable to ${WEB_CVE}:"
+		echo "${WEB_SUSPECT_PACKAGES}"
 		RETVAL=1
 	fi
 }
